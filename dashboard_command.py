@@ -23,149 +23,190 @@ ICONS = {
     "Café": "☕"
 }
 
+
+# ============================================================
+# 🔵 PAGINATION VIEW (boutons)
+# ============================================================
+class DashboardView(discord.ui.View):
+    def __init__(self, pages, user):
+        super().__init__(timeout=90)  # expire après 90 sec d'inactivité
+        self.pages = pages
+        self.page = 0
+        self.user = user  # seule cette personne peut cliquer
+
+    async def update_message(self, interaction):
+        embed = self.pages[self.page]
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    # Bouton précédent
+    @discord.ui.button(label="◀️", style=discord.ButtonStyle.primary)
+    async def previous(self, interaction, button):
+        if interaction.user.id != self.user.id:
+            return await interaction.response.send_message(
+                "❌ Tu ne peux pas utiliser ces boutons.", ephemeral=True
+            )
+
+        if self.page > 0:
+            self.page -= 1
+
+        await self.update_message(interaction)
+
+    # Bouton suivant
+    @discord.ui.button(label="▶️", style=discord.ButtonStyle.primary)
+    async def next(self, interaction, button):
+        if interaction.user.id != self.user.id:
+            return await interaction.response.send_message(
+                "❌ Tu ne peux pas utiliser ces boutons.", ephemeral=True
+            )
+
+        if self.page < len(self.pages) - 1:
+            self.page += 1
+
+        await self.update_message(interaction)
+
+    # Bouton fermer
+    @discord.ui.button(label="🗑️ Fermer", style=discord.ButtonStyle.danger)
+    async def close(self, interaction, button):
+        if interaction.user.id != self.user.id:
+            return await interaction.response.send_message(
+                "❌ Tu ne peux pas utiliser ces boutons.", ephemeral=True
+            )
+
+        await interaction.response.edit_message(content="Dashboard fermé.", embed=None, view=None)
+
+
+
+# ============================================================
+# 🔵 COG DASHBOARD
+# ============================================================
 class Dashboard(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ======================================================================
-    # 1. /dashboard (Vue Détaillée - Compacte)
-    # ======================================================================
-    @app_commands.command(name="dashboard", description="Show the full tab dashboard with details.")
-    async def dashboard(self, interaction: discord.Interaction):
+    # ========================================================
+    # /dashboard → complet ou par utilisateur
+    # ========================================================
+    @app_commands.command(name="dashboard", description="Affiche le dashboard complet ou celui d'un utilisateur.")
+    @app_commands.describe(user="Utilisateur dont vous souhaitez afficher les détails (optionnel)")
+    async def dashboard(self, interaction: discord.Interaction, user: discord.User | None = None):
 
         ledger = load_ledger()
 
         if not ledger:
-            return await interaction.response.send_message(
-                "📭 The tab is empty.", ephemeral=True
-            )
+            return await interaction.response.send_message("📭 The tab is empty.", ephemeral=True)
 
-        embed = discord.Embed(
-            title="🧾 Grand Livre Détaillé",
-            description="Liste complète de toutes les entrées enregistrées.",
-            color=discord.Color.blue() # Changement de couleur pour varier
-        )
-        
-        # Compteur pour savoir si on a ajouté quelque chose
-        entry_count = 0 
-
-        for user_id, entries in ledger.items():
-            user = interaction.guild.get_member(int(user_id))
-
-            embed.add_field(
-                name="⠀",  # caractère invisible pour que Discord accepte le champ
-                value=f"**⸻ ✦ {user.mention} ✦ ⸻**",
-                inline=False
-            )
-            
-            # Affichage des entrées de l'utilisateur en ligne
-            for i, entry in enumerate(entries):
-                emoji = ICONS.get(entry["item"], "❓")
-                reason = entry.get("reason")
-                added_by_id = entry["added_by"]
-                added_by = interaction.guild.get_member(added_by_id)
-                added_by_name = added_by.display_name if added_by else f"ID: {added_by_id}"
-                
-                # Le nom du champ affiche l'Item et la quantité
-                field_name = f"{emoji} {entry['item']} × {entry['amount']}"
-                
-                # La valeur du champ affiche les détails (Raison + Ajouté par)
-                field_value = (
-                    f"**Raison :** {'*' + reason + '*' if reason else 'Aucune'}\n"
-                    f"**Ajouté par :** {added_by.display_name if added_by else added_by_name}\n"
-                    f"⠀"
-                )
-                
-                # On utilise inline=True pour avoir 2 ou 3 colonnes si l'écran le permet
-                embed.add_field(name=field_name, value=field_value, inline=True)
-                entry_count += 1
-        
-        # Ajout d'un footer pour la date et le compte
-        embed.set_footer(text=f"Total: {entry_count} entrées | Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-
-        await interaction.response.send_message(embed=embed)
-
-    @app_commands.command(name="dashboardsummary", description="Affiche un résumé consolidé des consommations")
-    async def dashboardsummary(self, interaction: discord.Interaction):
-
-        # IMPORTANT : empêche Discord d'annuler la commande
         await interaction.response.defer()
 
-        ledger = load_ledger()
+        # =====================================================
+        # 1️⃣ MODE INDIVIDUEL → PAS DE PAGINATION
+        # =====================================================
+        if user:
+            user_id = str(user.id)
 
-        if not ledger:
+            if user_id not in ledger:
+                return await interaction.followup.send(
+                    f"❌ Aucun enregistrement trouvé pour {user.mention}.",
+                    ephemeral=True
+                )
+
+            entries = ledger[user_id]
+
             embed = discord.Embed(
-                title="📭 Aucune donnée",
-                description="Personne n'a encore rien consommé.",
-                color=discord.Color.greyple()
+                title=f"⸻ ✦ {user.display_name} ✦ ⸻",
+                description="",
+                color=discord.Color.blue()
             )
-            return await interaction.followup.send(embed=embed, ephemeral=True)
 
-        embed = discord.Embed(
-            title="📊 Résumé Global",
-            description="Synthèse des consommations par utilisateur.",
-            color=discord.Color.green()
-        )
-
-        summary = {}
-        grand_total = {}
-
-        # Agrégation des totaux
-        for user_id, entries in ledger.items():
-            if user_id not in summary:
-                summary[user_id] = {}
+            if user.avatar:
+                embed.set_thumbnail(url=user.avatar.url)
 
             for entry in entries:
-                item = entry["item"]
-                amount = entry["amount"]
+                emoji = ICONS.get(entry["item"], "❓")
+                reason = entry.get("reason")
+                added_by = interaction.guild.get_member(entry["added_by"])
 
-                summary[user_id][item] = summary[user_id].get(item, 0) + amount
-                grand_total[item] = grand_total.get(item, 0) + amount
+                embed.add_field(
+                    name=f"{emoji} {entry['item']} × {entry['amount']}",
+                    value=(
+                        f"**Raison :** {'*' + reason + '*' if reason else 'Aucune'}\n"
+                        f"**Ajouté par :** {added_by.display_name if added_by else 'Inconnu'}\n⠀"
+                    ),
+                    inline=True
+                )
 
-        # Section par utilisateur
-        for user_id, items in summary.items():
-            user = interaction.guild.get_member(int(user_id))
-            username = user.mention if user else f"`Utilisateur inconnu ({user_id})`"
+            embed.set_footer(text=f"Mis à jour le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+            return await interaction.followup.send(embed=embed)
 
-            embed.add_field(
-                name="⠀",
-                value=f"**⸻ ✦ {username} ✦ ⸻**",
-                inline=False
+        # =====================================================
+        # 2️⃣ MODE COMPLET → PAGINATION
+        # =====================================================
+        pages = []           # liste d'embeds générés
+        current_embed = None
+        char_count = 0       # compte le nombre de caractères dans cette page
+
+        def new_page():
+            return discord.Embed(
+                title="🧾 Grand Livre Détaillé",
+                description="Liste complète de toutes les entrées enregistrées.",
+                color=discord.Color.blue()
             )
 
-            lines = []
-            for item, amount in sorted(items.items()):
-                emoji = ICONS.get(item, "❓")
-                lines.append(f"{emoji} **{item}** : `×{amount}`")
+        current_embed = new_page()
 
-            embed.add_field(
-                name="Consommations",
-                value="\n".join(lines),
-                inline=True
-            )
+        TOTAL_LIMIT = 5500  # limite prudente par page
+        entry_count = 0
 
-        # TOTAL GLOBAL
-        if grand_total:
-            total_lines = []
-            for item, amount in sorted(grand_total.items()):
-                emoji = ICONS.get(item, "❓")
-                total_lines.append(f"{emoji} {amount}")
+        for user_id, entries in ledger.items():
+            member = interaction.guild.get_member(int(user_id))
 
-            embed.add_field(
-                name="⠀",
-                value="**━━━━━━━━━━━━━━**",
-                inline=False
-            )
+            header_text = f"**⸻ ✦ {member.mention} ✦ ⸻**\n"
+            header_len = len(header_text)
 
-            embed.add_field(
-                name="📈 Total Général",
-                value=" • ".join(total_lines),
-                inline=False
-            )
+            # créer une nouvelle page si nécessaire
+            if char_count + header_len > TOTAL_LIMIT:
+                pages.append(current_embed)
+                current_embed = new_page()
+                char_count = 0
 
-        embed.set_footer(text=f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+            current_embed.add_field(name="⠀", value=header_text, inline=False)
+            char_count += header_len
 
-        await interaction.followup.send(embed=embed)
+            for entry in entries:
+                emoji = ICONS.get(entry["item"], "❓")
+                reason = entry.get("reason")
+                added_by = interaction.guild.get_member(entry["added_by"])
+
+                value = (
+                    f"**Raison :** {'*' + reason + '*' if reason else 'Aucune'}\n"
+                    f"**Ajouté par :** {added_by.display_name if added_by else 'Inconnu'}\n⠀"
+                )
+
+                entry_text_length = len(value) + len(entry["item"])
+
+                # Nouvelle page ?
+                if char_count + entry_text_length > TOTAL_LIMIT:
+                    pages.append(current_embed)
+                    current_embed = new_page()
+                    char_count = 0
+
+                current_embed.add_field(
+                    name=f"{emoji} {entry['item']} × {entry['amount']}",
+                    value=value,
+                    inline=True
+                )
+
+                char_count += entry_text_length
+                entry_count += 1
+
+        # dernière page
+        pages.append(current_embed)
+
+        # Pagination
+        view = DashboardView(pages, interaction.user)
+
+        # renvoi de la page 0
+        await interaction.followup.send(embed=pages[0], view=view)
+
 
 async def setup(bot):
     await bot.add_cog(Dashboard(bot))
