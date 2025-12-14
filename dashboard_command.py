@@ -9,7 +9,6 @@ from datetime import datetime
 
 LEDGER_FILE = "ledger.json"
 
-# Fonction pour charger le grand livre des dépenses
 def load_ledger():
     if not os.path.exists(LEDGER_FILE):
         with open(LEDGER_FILE, "w") as f:
@@ -17,39 +16,6 @@ def load_ledger():
     with open(LEDGER_FILE, "r") as f:
         return json.load(f)
 
-# Emojis/Icons pour un affichage plus joli
-ICONS = {
-    "Tournée": "🍺",
-    "Viennoiserie": "🥐",
-    "Kebab": "🌯",
-    "Café": "☕"
-}
-
-class Dashboard(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-
-    # ======================================================================
-    # 1. /dashboard (Vue Détaillée)
-    # ======================================================================
-import discord
-from discord import app_commands
-from discord.ext import commands
-import json
-import os
-from datetime import datetime
-
-LEDGER_FILE = "ledger.json"
-
-# Fonction pour charger le grand livre des dépenses
-def load_ledger():
-    if not os.path.exists(LEDGER_FILE):
-        with open(LEDGER_FILE, "w") as f:
-            json.dump({}, f)
-    with open(LEDGER_FILE, "r") as f:
-        return json.load(f)
-
-# Emojis/Icons pour un affichage plus joli
 ICONS = {
     "Tournée": "🍺",
     "Viennoiserie": "🥐",
@@ -85,13 +51,10 @@ class Dashboard(commands.Cog):
 
         for user_id, entries in ledger.items():
             user = interaction.guild.get_member(int(user_id))
-            username = user.display_name if user else f"ID: {user_id}"
 
-            # Ajout d'un titre de section pour l'utilisateur
-            embed.add_field(name=f"\u200b", value=f"\u200b", inline=False) # Ligne vide pour la séparation
             embed.add_field(
-                name=f"--- 👤 {username} ---", 
-                value="**\u200b**", 
+                name="⠀",  # caractère invisible pour que Discord accepte le champ
+                value=f"**⸻ ✦ {user.mention} ✦ ⸻**",
                 inline=False
             )
             
@@ -109,7 +72,8 @@ class Dashboard(commands.Cog):
                 # La valeur du champ affiche les détails (Raison + Ajouté par)
                 field_value = (
                     f"**Raison :** {'*' + reason + '*' if reason else 'Aucune'}\n"
-                    f"**Ajouté par :** {added_by.mention if added_by else added_by_name}"
+                    f"**Ajouté par :** {added_by.display_name if added_by else added_by_name}\n"
+                    f"⠀"
                 )
                 
                 # On utilise inline=True pour avoir 2 ou 3 colonnes si l'écran le permet
@@ -121,29 +85,32 @@ class Dashboard(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-
-    # ======================================================================
-    # 2. /dashboardsummary (Vue Résumée - Inchangé)
-    # ======================================================================
-    @app_commands.command(name="dashboardsummary", description="Show tab summary.")
+    @app_commands.command(name="dashboardsummary", description="Affiche un résumé consolidé des consommations")
     async def dashboardsummary(self, interaction: discord.Interaction):
+
+        # IMPORTANT : empêche Discord d'annuler la commande
+        await interaction.response.defer()
 
         ledger = load_ledger()
 
         if not ledger:
-            return await interaction.response.send_message(
-                "📭 No entries in the tab.", ephemeral=True
+            embed = discord.Embed(
+                title="📭 Aucune donnée",
+                description="Personne n'a encore rien consommé.",
+                color=discord.Color.greyple()
             )
+            return await interaction.followup.send(embed=embed, ephemeral=True)
 
         embed = discord.Embed(
-            title="📈 Récapitulatif du Tab",
-            description="Totaux consolidés par utilisateur et par item.",
+            title="📊 Résumé Global",
+            description="Synthèse des consommations par utilisateur.",
             color=discord.Color.green()
         )
 
         summary = {}
+        grand_total = {}
 
-        # 1. Aggregate items
+        # Agrégation des totaux
         for user_id, entries in ledger.items():
             if user_id not in summary:
                 summary[user_id] = {}
@@ -151,85 +118,54 @@ class Dashboard(commands.Cog):
             for entry in entries:
                 item = entry["item"]
                 amount = entry["amount"]
-                summary[user_id][item] = summary[user_id].get(item, 0) + amount
 
-        # 2. Display summary fields
+                summary[user_id][item] = summary[user_id].get(item, 0) + amount
+                grand_total[item] = grand_total.get(item, 0) + amount
+
+        # Section par utilisateur
         for user_id, items in summary.items():
             user = interaction.guild.get_member(int(user_id))
-            username = user.display_name if user else f"ID: {user_id}"
-
-            # Construire la liste des totaux
-            lines = [
-                f"{ICONS.get(item, '❓')} **{item}** : **{amount}**"
-                for item, amount in items.items()
-            ]
+            username = user.mention if user else f"`Utilisateur inconnu ({user_id})`"
 
             embed.add_field(
-                name=f"👤 {username}",
-                value="\n".join(lines),
-                inline=True 
-            )
-        
-        embed.set_footer(text=f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-
-
-        await interaction.response.send_message(embed=embed)
-
-async def setup(bot):
-    await bot.add_cog(Dashboard(bot))
-
-    # ======================================================================
-    # 2. /dashboardsummary (Vue Résumée)
-    # ======================================================================
-    @app_commands.command(name="dashboardsummary", description="Show tab summary.")
-    async def dashboardsummary(self, interaction: discord.Interaction):
-
-        ledger = load_ledger()
-
-        if not ledger:
-            return await interaction.response.send_message(
-                "📭 No entries in the tab.", ephemeral=True
+                name="⠀",
+                value=f"**⸻ ✦ {username} ✦ ⸻**",
+                inline=False
             )
 
-        embed = discord.Embed(
-            title="📈 Récapitulatif du Tab",
-            description="Totaux consolidés par utilisateur et par item.",
-            color=discord.Color.green()
-        )
-
-        summary = {}
-
-        # 1. Aggregate items
-        for user_id, entries in ledger.items():
-            if user_id not in summary:
-                summary[user_id] = {}
-
-            for entry in entries:
-                item = entry["item"]
-                amount = entry["amount"]
-                summary[user_id][item] = summary[user_id].get(item, 0) + amount
-
-        # 2. Display summary fields
-        for user_id, items in summary.items():
-            user = interaction.guild.get_member(int(user_id))
-            username = user.display_name if user else f"ID: {user_id}"
-
-            # Construire la liste des totaux avec un format plus propre
-            lines = [
-                f"{ICONS.get(item, '❓')} **{item}** : **{amount}**"
-                for item, amount in items.items()
-            ]
+            lines = []
+            for item, amount in sorted(items.items()):
+                emoji = ICONS.get(item, "❓")
+                lines.append(f"{emoji} **{item}** : `×{amount}`")
 
             embed.add_field(
-                name=f"👤 {username}",
+                name="Consommations",
                 value="\n".join(lines),
-                inline=True # On utilise inline=True ici pour grouper les utilisateurs
+                inline=True
             )
-        
+
+        # TOTAL GLOBAL
+        if grand_total:
+            total_lines = []
+            for item, amount in sorted(grand_total.items()):
+                emoji = ICONS.get(item, "❓")
+                total_lines.append(f"{emoji} {amount}")
+
+            embed.add_field(
+                name="⠀",
+                value="**━━━━━━━━━━━━━━**",
+                inline=False
+            )
+
+            embed.add_field(
+                name="📈 Total Général",
+                value=" • ".join(total_lines),
+                inline=False
+            )
+
         embed.set_footer(text=f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
-
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Dashboard(bot))
