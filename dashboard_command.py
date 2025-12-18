@@ -208,5 +208,66 @@ class Dashboard(commands.Cog):
         await interaction.followup.send(embed=pages[0], view=view)
 
 
+    @app_commands.command(name="dashboardsummary", description="Affiche un résumé consolidé des consommations")
+    async def dashboardsummary(self, interaction: discord.Interaction):
+
+        await interaction.response.defer()
+        ledger = load_ledger()
+
+        if not ledger:
+            embed = discord.Embed(
+                title="📭 Aucune donnée",
+                description="Personne n'a encore rien consommé.",
+                color=discord.Color.greyple()
+            )
+            return await interaction.followup.send(embed=embed, ephemeral=True)
+
+        embed = discord.Embed(
+            title="📊 Résumé Global",
+            description="Synthèse des consommations par utilisateur.",
+            color=discord.Color.green()
+        )
+
+        summary = {}
+        grand_total = {}
+
+        for user_id, entries in ledger.items():
+            if user_id not in summary:
+                summary[user_id] = {}
+
+            for entry in entries:
+                item = entry["item"]
+                summary[user_id][item] = summary[user_id].get(item, 0) + entry["amount"]
+                grand_total[item] = grand_total.get(item, 0) + entry["amount"]
+
+        for user_id, items in summary.items():
+            member = interaction.guild.get_member(int(user_id))
+            username = member.mention if member else f"`Utilisateur inconnu ({user_id})`"
+
+            embed.add_field(
+                name="⠀",
+                value=f"**⸻ ✦ {username} ✦ ⸻**",
+                inline=False
+            )
+
+            lines = []
+            for item, amount in sorted(items.items()):
+                emoji = ICONS.get(item, "❓")
+                lines.append(f"{emoji} **{item}** : `×{amount}`")
+
+            embed.add_field(
+                name="Consommations",
+                value="\n".join(lines),
+                inline=True
+            )
+
+        total_lines = [f"{ICONS.get(i, '❓')} {a}" for i, a in sorted(grand_total.items())]
+
+        embed.add_field(name="⠀", value="**━━━━━━━━━━━━━━**", inline=False)
+        embed.add_field(name="📈 Total Général", value=" • ".join(total_lines), inline=False)
+
+        embed.set_footer(text=f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        await interaction.followup.send(embed=embed)
+
 async def setup(bot):
     await bot.add_cog(Dashboard(bot))

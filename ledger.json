@@ -43,6 +43,12 @@
             "amount": 1,
             "reason": null,
             "added_by": 478701860358717450
+        },
+        {
+            "item": "Viennoiserie",
+            "amount": 1,
+            "reason": "Test",
+            "added_by": 478701860358717450
         }
     ],
     "413693252886331402": [
