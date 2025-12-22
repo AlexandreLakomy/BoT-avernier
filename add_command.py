@@ -6,10 +6,12 @@ from discord.ext import commands
 import json
 import os
 from datetime import datetime
+import traceback
 
 LEDGER_FILE = "ledger.json"
 PENDING_FILE = "pending.json"
 REQUIRED_VOTES = 1  # Modulable ici
+MAX_FIELDS_PER_PAGE = 24  # Limite Discord
 
 def load_ledger():
     if not os.path.exists(LEDGER_FILE):
@@ -39,6 +41,57 @@ ICONS = {
     "Kebab": "🌯",
     "Café": "☕"
 }
+
+# ============================================================
+# 🔵 PAGINATION VIEW (boutons)
+# ============================================================
+class PendingView(discord.ui.View):
+    def __init__(self, pages, user):
+        super().__init__(timeout=90)
+        self.pages = pages
+        self.page = 0
+        self.user = user
+        self.update_buttons()
+
+    def update_buttons(self):
+        """Active/désactive les boutons selon la page actuelle"""
+        self.children[0].disabled = (self.page == 0)  # Bouton précédent
+        self.children[1].disabled = (self.page >= len(self.pages) - 1)  # Bouton suivant
+
+    async def update_message(self, interaction):
+        self.update_buttons()
+        embed = self.pages[self.page]
+        embed.set_footer(text=f"Page {self.page + 1}/{len(self.pages)} • {len(self.pages[0].fields)} proposition(s) en attente")
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="◀️", style=discord.ButtonStyle.primary)
+    async def previous(self, interaction, button):
+        if interaction.user.id != self.user.id:
+            return await interaction.response.send_message(
+                "❌ Tu ne peux pas utiliser ces boutons.", ephemeral=True
+            )
+        if self.page > 0:
+            self.page -= 1
+        await self.update_message(interaction)
+
+    @discord.ui.button(label="▶️", style=discord.ButtonStyle.primary)
+    async def next(self, interaction, button):
+        if interaction.user.id != self.user.id:
+            return await interaction.response.send_message(
+                "❌ Tu ne peux pas utiliser ces boutons.", ephemeral=True
+            )
+        if self.page < len(self.pages) - 1:
+            self.page += 1
+        await self.update_message(interaction)
+
+    @discord.ui.button(label="🗑️ Fermer", style=discord.ButtonStyle.danger)
+    async def close(self, interaction, button):
+        if interaction.user.id != self.user.id:
+            return await interaction.response.send_message(
+                "❌ Tu ne peux pas utiliser ces boutons.", ephemeral=True
+            )
+        await interaction.response.edit_message(content="Dashboard fermé.", embed=None, view=None)
+
 
 class ReasonModal(discord.ui.Modal, title="Ajouter une raison"):
     reason = discord.ui.TextInput(
@@ -251,38 +304,94 @@ class AddCommand(commands.Cog):
 
     @app_commands.command(name="dashboardpending", description="Affiche les propositions en attente de validation")
     async def dashboardpending(self, interaction: discord.Interaction):
-        pending = load_pending()
-        
-        if not pending:
-            embed = discord.Embed(
-                title="📭 Aucune proposition",
-                description="Il n'y a pas de tournée en attente de validation",
-                color=discord.Color.greyple()
+        try:
+            print("[DEBUG] Dashboardpending command called")
+            pending = load_pending()
+            
+            if not pending:
+                embed = discord.Embed(
+                    title="📭 Aucune proposition",
+                    description="Il n'y a pas de tournée en attente de validation",
+                    color=discord.Color.greyple()
+                )
+                return await interaction.response.send_message(embed=embed, ephemeral=True)
+            
+            await interaction.response.defer()
+            
+            # Créer les pages avec pagination
+            PAGE_CHAR_LIMIT = 5800
+            pages = []
+            current_embed = discord.Embed(
+                title="⏳ Propositions en Attente",
+                description=f"*Nécessitent {REQUIRED_VOTES} votes pour être validées*",
+                color=discord.Color.orange()
             )
-            return await interaction.response.send_message(embed=embed, ephemeral=True)
-        
-        embed = discord.Embed(
-            title="⏳ Propositions en Attente",
-            description=f"*Nécessitent {REQUIRED_VOTES} votes pour être validées*",
-            color=discord.Color.orange()
-        )
-        
-        for proposal_id, entry in pending.items():
-            user = await self.bot.fetch_user(entry["user_id"])
-            added_by = await self.bot.fetch_user(entry["added_by"])
-            emoji = ICONS.get(entry["item"], "❓")
-            votes_count = len(entry["votes"])
+            base_size = len(current_embed.title or "") + len(current_embed.description or "")
+            current_page_size = base_size
             
-            field_name = f"{emoji} {entry['item']} ×{entry['amount']} pour {user.display_name}"
-            field_value = f"**Votes :** {votes_count}/{REQUIRED_VOTES}\n**Par :** {added_by.mention}"
+            print(f"[DEBUG] {len(pending)} propositions to display")
             
-            if entry["reason"]:
-                field_value += f"\n**Raison :** *{entry['reason']}*"
+            pending_count = 0
+            for proposal_id, entry in pending.items():
+                pending_count += 1
+                
+                user = await self.bot.fetch_user(entry["user_id"])
+                added_by = await self.bot.fetch_user(entry["added_by"])
+                emoji = ICONS.get(entry["item"], "❓")
+                votes_count = len(entry["votes"])
+                
+                field_name = f"{emoji} {entry['item']} ×{entry['amount']} pour {user.display_name}"
+                field_value = f"**Votes :** {votes_count}/{REQUIRED_VOTES}\n**Par :** {added_by.mention}"
+                
+                if entry["reason"]:
+                    field_value += f"\n**Raison :** *{entry['reason']}*"
+                
+                # Calculer la taille de ce field
+                field_size = len(field_name) + len(field_value)
+                
+                print(f"[DEBUG] Proposition {pending_count}: {field_size} chars, current page: {current_page_size} chars, {len(current_embed.fields)} fields")
+                
+                # Vérifier les limites (fields ET caractères)
+                will_exceed_fields = (len(current_embed.fields) >= MAX_FIELDS_PER_PAGE)
+                will_exceed_chars = (current_page_size + field_size > PAGE_CHAR_LIMIT)
+                
+                if (will_exceed_fields or will_exceed_chars) and len(current_embed.fields) > 0:
+                    print(f"[DEBUG] Pending page full (fields: {will_exceed_fields}, chars: {will_exceed_chars}), creating new page")
+                    pages.append(current_embed)
+                    current_embed = discord.Embed(
+                        title="⏳ Propositions en Attente",
+                        description=f"*Nécessitent {REQUIRED_VOTES} votes pour être validées*",
+                        color=discord.Color.orange()
+                    )
+                    current_page_size = base_size
+                
+                current_embed.add_field(name=field_name, value=field_value, inline=False)
+                current_page_size += field_size
             
-            embed.add_field(name=field_name, value=field_value, inline=False)
+            # Ajouter la dernière page
+            if len(current_embed.fields) > 0:
+                pages.append(current_embed)
+            
+            print(f"[DEBUG] Created {len(pages)} pending pages")
+            
+            # Envoyer avec ou sans pagination
+            if len(pages) == 1:
+                pages[0].set_footer(text=f"{len(pending)} proposition(s) en attente")
+                await interaction.followup.send(embed=pages[0])
+            else:
+                view = PendingView(pages, interaction.user)
+                pages[0].set_footer(text=f"Page 1/{len(pages)} • {len(pending)} proposition(s) en attente")
+                await interaction.followup.send(embed=pages[0], view=view)
+            
+            print("[DEBUG] Dashboardpending sent successfully")
         
-        embed.set_footer(text=f"{len(pending)} proposition(s) en attente")
-        await interaction.response.send_message(embed=embed)
+        except Exception as e:
+            print(f"[ERROR] Dashboardpending failed: {e}")
+            traceback.print_exc()
+            try:
+                await interaction.followup.send(f"❌ Erreur: {str(e)}", ephemeral=True)
+            except:
+                print("[ERROR] Could not send error message")
 
 async def setup(bot):
     await bot.add_cog(AddCommand(bot))
