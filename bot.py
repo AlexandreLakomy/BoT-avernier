@@ -25,6 +25,7 @@ async def main():
     async with bot:
         await bot.load_extension("add_command")
         await bot.load_extension("dashboard_command")
+        await bot.load_extension("fulfill_command")
         await bot.start(TOKEN)
 
 asyncio.run(main())
