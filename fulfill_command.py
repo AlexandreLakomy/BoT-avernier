@@ -1,5 +1,3 @@
-# fulfill_command.py
-
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -124,6 +122,7 @@ class FulfillView(discord.ui.View):
         super().__init__(timeout=120)
 
         self.user = user
+        self.items_due = items_due
         self.item = None
         self.amount = None
 
@@ -140,6 +139,7 @@ class FulfillView(discord.ui.View):
         self.item_select = discord.ui.Select(
             placeholder="Choisir l'item à acquitter",
             options=item_options,
+            row=0,
         )
         self.item_select.callback = self.on_item_select
         self.add_item(self.item_select)
@@ -151,22 +151,101 @@ class FulfillView(discord.ui.View):
                 discord.SelectOption(label=f"×{i}", value=str(i))
                 for i in range(1, 6)
             ],
+            row=1,
         )
         self.amount_select.callback = self.on_amount_select
         self.add_item(self.amount_select)
 
     async def on_item_select(self, interaction: discord.Interaction):
         self.item = self.item_select.values[0]
-        await interaction.response.defer()
+        
+        # Mettre à jour les options de quantité en fonction de l'item sélectionné
+        max_amount = self.items_due[self.item]
+        
+        # Créer un nouveau select avec les bonnes options
+        self.remove_item(self.amount_select)
+        
+        self.amount_select = discord.ui.Select(
+            placeholder="Choisir la quantité",
+            options=[
+                discord.SelectOption(label=f"×{i}", value=str(i))
+                for i in range(1, min(max_amount + 1, 6))
+            ],
+            row=1,
+        )
+        self.amount_select.callback = self.on_amount_select
+        self.add_item(self.amount_select)
+        
+        # Réinitialiser la sélection de quantité
+        self.amount = None
+        
+        # Recréer le select d'item avec la valeur par défaut
+        self.remove_item(self.item_select)
+        
+        item_options = [
+            discord.SelectOption(
+                label=f"{item} (×{total} restant)",
+                emoji=ICONS.get(item, "❓"),
+                value=item,
+                default=(item == self.item),
+            )
+            for item, total in self.items_due.items()
+        ]
+        
+        self.item_select = discord.ui.Select(
+            placeholder="Choisir l'item à acquitter",
+            options=item_options,
+            row=0,
+        )
+        self.item_select.callback = self.on_item_select
+        self.add_item(self.item_select)
+        
+        await interaction.response.edit_message(view=self)
 
     async def on_amount_select(self, interaction: discord.Interaction):
         self.amount = int(self.amount_select.values[0])
-        await interaction.response.defer()
+        
+        # Recréer les selects avec les valeurs par défaut
+        self.remove_item(self.item_select)
+        self.remove_item(self.amount_select)
+        
+        item_options = [
+            discord.SelectOption(
+                label=f"{item} (×{total} restant)",
+                emoji=ICONS.get(item, "❓"),
+                value=item,
+                default=(item == self.item),
+            )
+            for item, total in self.items_due.items()
+        ]
+        
+        self.item_select = discord.ui.Select(
+            placeholder="Choisir l'item à acquitter",
+            options=item_options,
+            row=0,
+        )
+        self.item_select.callback = self.on_item_select
+        self.add_item(self.item_select)
+        
+        max_amount = self.items_due[self.item]
+        self.amount_select = discord.ui.Select(
+            placeholder="Choisir la quantité",
+            options=[
+                discord.SelectOption(label=f"×{i}", value=str(i), default=(i == self.amount))
+                for i in range(1, min(max_amount + 1, 6))
+            ],
+            row=1,
+        )
+        self.amount_select.callback = self.on_amount_select
+        self.add_item(self.amount_select)
+        
+        await interaction.response.edit_message(view=self)
 
     @discord.ui.button(
         label="Acquitter",
         style=discord.ButtonStyle.green,
         emoji="✅",
+        row=2,
     )
     async def confirm(
         self,
@@ -204,12 +283,8 @@ class FulfillCommand(commands.Cog):
         interaction: discord.Interaction,
         user: discord.User,
     ):
-        if interaction.user.id != user.id:
-            return await interaction.response.send_message(
-                "❌ Tu ne peux acquitter que tes propres tournées.",
-                ephemeral=True,
-            )
-
+        # SUPPRIMÉ : la vérification qui empêchait d'acquitter pour les autres
+        
         # Obligatoire avant followup
         await interaction.response.defer(ephemeral=True)
 
@@ -218,7 +293,7 @@ class FulfillCommand(commands.Cog):
 
         if uid not in ledger or not ledger[uid]:
             return await interaction.followup.send(
-                "🎉 Tu n'as aucune tournée à acquitter.",
+                f"🎉 {user.mention} n'a aucune tournée à acquitter.",
                 ephemeral=True,
             )
 
@@ -229,7 +304,7 @@ class FulfillCommand(commands.Cog):
 
         embed = discord.Embed(
             title="💸 Acquitter une tournée",
-            description="Choisis l'item et la quantité à acquitter",
+            description=f"Choisis l'item et la quantité à acquitter pour {user.mention}",
             color=discord.Color.green(),
         )
 
