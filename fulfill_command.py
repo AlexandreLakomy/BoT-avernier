@@ -107,12 +107,40 @@ class FulfillModal(discord.ui.Modal, title="Ajouter un commentaire"):
         })
         save_fulfillments(fulfillments)
 
+        # Créer un embed pour l'acquittement
+        embed = discord.Embed(
+            title="✅ Tournée Acquittée !",
+            description=f"Cette tournée a été payée et retirée du grand livre",
+            color=discord.Color.green(),
+        )
+        
+        embed.add_field(
+            name="🙋 Victime",
+            value=f"<@{self.user_id}>",
+            inline=True
+        )
+        
+        embed.add_field(
+            name=f"{ICONS[self.item]} Item",
+            value=f"{self.item} ×{self.amount}",
+            inline=True
+        )
+        
+        if self.comment.value:
+            embed.add_field(
+                name="💬 Commentaire",
+                value=self.comment.value,
+                inline=False
+            )
+        
+        embed.set_footer(text=f"Payé le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
+        
+        # Envoyer un message public dans le canal
+        await interaction.channel.send(embed=embed)
+        
+        # Fermer le message éphémère
         await interaction.response.edit_message(
-            content=(
-                "✅ **Acquittement enregistré**\n"
-                f"{ICONS[self.item]} {self.item} ×{self.amount}\n"
-                f"🕒 {datetime.now().strftime('%d/%m/%Y %H:%M')}"
-            ),
+            content="✅ Acquittement enregistré et publié !",
             embed=None,
             view=None,
         )
