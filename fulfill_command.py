@@ -90,6 +90,11 @@ class FulfillModal(discord.ui.Modal, title="Ajouter un commentaire"):
 
         # Suppression des entrées soldées
         ledger[uid] = [e for e in ledger.get(uid, []) if e["amount"] > 0]
+        
+        # Si l'utilisateur n'a plus aucune dette, supprimer sa clé du ledger
+        if not ledger[uid]:
+            del ledger[uid]
+        
         save_ledger(ledger)
 
         # Historique
