@@ -103,7 +103,7 @@ class FulfillModal(discord.ui.Modal, title="Ajouter un commentaire"):
         )
         
         embed.add_field(
-            name="✅ Payé par",
+            name="✅ Acquitté par",
             value=f"<@{interaction.user.id}>",
             inline=True
         )
