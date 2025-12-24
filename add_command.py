@@ -14,7 +14,7 @@ LEDGER_FILE = "ledger.json"
 PENDING_FILE = "pending.json"
 REQUIRED_VOTES = 1  # Modulable ici
 MAX_FIELDS_PER_PAGE = 24  # Limite Discord
-PROPOSAL_TIMEOUT = 3600  # 5 minutes en secondes pour test (normalement 36000 pour 10h)
+PROPOSAL_TIMEOUT = 36000  # 5 minutes en secondes pour test (normalement 36000 pour 10h)
 
 def load_ledger():
     if not os.path.exists(LEDGER_FILE):
