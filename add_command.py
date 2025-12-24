@@ -490,7 +490,7 @@ class AddCommand(commands.Cog):
                 time_str = f"{hours_left}h\u00A0{minutes_left}min" if hours_left > 0 else f"{minutes_left}min"
                 
                 field_name = f"{emoji} {entry['item']} ×{entry['amount']} pour {user.display_name}"
-                field_value = f"**Votes :** {votes_count}/{REQUIRED_VOTES} \u2009• \u2009Mis à jour très mineur des embeds⏰ {time_str}\n**Par :** {added_by.mention}"
+                field_value = f"**Votes :** {votes_count}/{REQUIRED_VOTES} \u2009• \u2009⏰ {time_str}\n**Par :** {added_by.mention}"
                 
                 if entry["reason"]:
                     field_value += f"\n**Raison :** *{entry['reason']}*"
