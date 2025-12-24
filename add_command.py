@@ -8,12 +8,13 @@ import os
 from datetime import datetime, timedelta
 import traceback
 import asyncio
+import math
 
 LEDGER_FILE = "ledger.json"
 PENDING_FILE = "pending.json"
 REQUIRED_VOTES = 1  # Modulable ici
 MAX_FIELDS_PER_PAGE = 24  # Limite Discord
-PROPOSAL_TIMEOUT = 300  # 10 heures en secondes (10 * 60 * 60)
+PROPOSAL_TIMEOUT = 3600  # 5 minutes en secondes pour test (normalement 36000 pour 10h)
 
 def load_ledger():
     if not os.path.exists(LEDGER_FILE):
@@ -149,11 +150,15 @@ class ReasonModal(discord.ui.Modal, title="Ajouter une raison"):
         if self.reason.value:
             embed.add_field(name="💬 Raison", value=f"*{self.reason.value}*", inline=False)
         
-        # Calculer le temps restant
-        time_left = "5 minutes"
+        # Calculer le temps restant initial avec arrondi
+        total_minutes = math.ceil(PROPOSAL_TIMEOUT / 60)
+        hours_left = total_minutes // 60
+        minutes_left = total_minutes % 60
+        time_str = f"{hours_left}h\u00A0{minutes_left}min" if hours_left > 0 else f"{minutes_left}min"
+        
         embed.add_field(
             name="━━━━━━━━━━━━━",
-            value=f"**0/{REQUIRED_VOTES}** votes • Réagissez avec 👍\n⏰ Expire dans {time_left}",
+            value=f"**0/{REQUIRED_VOTES}** votes • Réagissez avec 👍\n⏰ Expire dans {time_str}",
             inline=False
         )
         embed.set_footer(text=f"ID: {proposal_id}")
@@ -171,12 +176,10 @@ class ReasonModal(discord.ui.Modal, title="Ajouter une raison"):
         pending[proposal_id]["channel_id"] = message.channel.id
         save_pending(pending)
         
-        # Lancer le timer d'expiration
+        # Lancer le timer d'expiration et les mises à jour
         bot = interaction.client
         asyncio.create_task(bot.get_cog("AddCommand").check_proposal_expiration(proposal_id))
-        asyncio.create_task(
-            bot.get_cog("AddCommand").update_proposal_timer(proposal_id)
-        )
+        asyncio.create_task(bot.get_cog("AddCommand").update_proposal_timer(proposal_id))
 
 class AddView(discord.ui.View):
     def __init__(self, user):
@@ -251,7 +254,7 @@ class AddCommand(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def check_proposal_expiration(self, proposal_id):
-        """Vérifie si une proposition a expiré après 10h"""
+        """Vérifie si une proposition a expiré après le timeout"""
         await asyncio.sleep(PROPOSAL_TIMEOUT)
         
         pending = load_pending()
@@ -274,7 +277,7 @@ class AddCommand(commands.Cog):
                 emoji = ICONS.get(entry["item"], "❓")
                 embed = discord.Embed(
                     title="❌ Tournée Annulée",
-                    description="Cette proposition n'a pas reçu assez de votes dans les 10 heures",
+                    description="Cette proposition n'a pas reçu assez de votes dans le temps imparti",
                     color=discord.Color.red()
                 )
                 
@@ -301,6 +304,7 @@ class AddCommand(commands.Cog):
             save_pending(pending)
 
     async def update_proposal_timer(self, proposal_id):
+        """Met à jour le temps restant toutes les minutes"""
         while True:
             await asyncio.sleep(60)  # update toutes les 60s
 
@@ -316,7 +320,11 @@ class AddCommand(commands.Cog):
             if remaining.total_seconds() <= 0:
                 return  # expiration gérée ailleurs
 
-            minutes = int(remaining.total_seconds() // 60)
+            # Arrondir à la minute supérieure
+            total_minutes = math.ceil(remaining.total_seconds() / 60)
+            hours_left = total_minutes // 60
+            minutes_left = total_minutes % 60
+            time_str = f"{hours_left}h\u00A0{minutes_left}min" if hours_left > 0 else f"{minutes_left}min"
 
             try:
                 channel = self.bot.get_channel(entry["channel_id"])
@@ -325,18 +333,19 @@ class AddCommand(commands.Cog):
                 embed = message.embeds[0]
                 votes_count = len(entry["votes"])
 
+                # Mettre à jour le field avec le timer
                 embed.set_field_at(
                     -1,
                     name="━━━━━━━━━━━━━",
-                    value=f"**{votes_count}/{REQUIRED_VOTES}** votes • Réagissez avec 👍\n⏰ Expire dans {minutes} min",
+                    value=f"**{votes_count}/{REQUIRED_VOTES}** votes • Réagissez avec 👍\n⏰ Expire dans {time_str}",
                     inline=False
                 )
 
                 await message.edit(embed=embed)
 
-            except:
+            except Exception as e:
+                print(f"[ERROR] Could not update timer: {e}")
                 return  # message supprimé ou erreur → on stop
-
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
@@ -416,12 +425,13 @@ class AddCommand(commands.Cog):
             await message.edit(embed=embed)
             await message.clear_reactions()
         else:
-            # Calculer le temps restant
+            # Calculer le temps restant avec arrondi à la minute supérieure
             expires_at = datetime.fromisoformat(entry["expires_at"])
             time_left = expires_at - datetime.now()
-            hours_left = int(time_left.total_seconds() // 3600)
-            minutes_left = int((time_left.total_seconds() % 3600) // 60)
-            time_str = f"{hours_left}h{minutes_left}m" if hours_left > 0 else f"{minutes_left}m"
+            total_minutes = math.ceil(time_left.total_seconds() / 60)
+            hours_left = total_minutes // 60
+            minutes_left = total_minutes % 60
+            time_str = f"{hours_left}h\u00A0{minutes_left}min" if hours_left > 0 else f"{minutes_left}min"
             
             # Mettre à jour le compte de votes
             embed = message.embeds[0]
@@ -471,15 +481,16 @@ class AddCommand(commands.Cog):
                 emoji = ICONS.get(entry["item"], "❓")
                 votes_count = len(entry["votes"])
                 
-                # Calculer le temps restant
+                # Calculer le temps restant avec arrondi à la minute supérieure
                 expires_at = datetime.fromisoformat(entry["expires_at"])
                 time_left = expires_at - datetime.now()
-                hours_left = int(time_left.total_seconds() // 3600)
-                minutes_left = int((time_left.total_seconds() % 3600) // 60)
-                time_str = f"{hours_left}h{minutes_left}m" if hours_left > 0 else f"{minutes_left}m"
+                total_minutes = math.ceil(time_left.total_seconds() / 60)
+                hours_left = total_minutes // 60
+                minutes_left = total_minutes % 60
+                time_str = f"{hours_left}h\u00A0{minutes_left}min" if hours_left > 0 else f"{minutes_left}min"
                 
                 field_name = f"{emoji} {entry['item']} ×{entry['amount']} pour {user.display_name}"
-                field_value = f"**Votes :** {votes_count}/{REQUIRED_VOTES}      •      ⏰ {time_str}\n**Par :** {added_by.mention}"
+                field_value = f"**Votes :** {votes_count}/{REQUIRED_VOTES} \u2009• \u2009⏰ {time_str}\n**Par :** {added_by.mention}"
                 
                 if entry["reason"]:
                     field_value += f"\n**Raison :** *{entry['reason']}*"

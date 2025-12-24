@@ -11,7 +11,6 @@ from datetime import datetime
 # ============================================================
 
 LEDGER_FILE = "ledger.json"
-FULFILL_FILE = "fulfillments.json"
 
 ICONS = {
     "Tournée": "🍺",
@@ -35,18 +34,6 @@ def save_ledger(data):
     with open(LEDGER_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-
-def load_fulfillments():
-    if not os.path.exists(FULFILL_FILE):
-        return []
-    with open(FULFILL_FILE, "r") as f:
-        return json.load(f)
-
-
-def save_fulfillments(data):
-    with open(FULFILL_FILE, "w") as f:
-        json.dump(data, f, indent=4)
-
 # ============================================================
 # MODAL : Commentaire
 # ============================================================
@@ -68,7 +55,6 @@ class FulfillModal(discord.ui.Modal, title="Ajouter un commentaire"):
 
     async def on_submit(self, interaction: discord.Interaction):
         ledger = load_ledger()
-        fulfillments = load_fulfillments()
 
         uid = str(self.user_id)
         remaining = self.amount
@@ -97,16 +83,6 @@ class FulfillModal(discord.ui.Modal, title="Ajouter un commentaire"):
         
         save_ledger(ledger)
 
-        # Historique
-        fulfillments.append({
-            "user_id": self.user_id,
-            "item": self.item,
-            "amount": self.amount,
-            "comment": self.comment.value or None,
-            "fulfilled_at": datetime.now().isoformat(),
-        })
-        save_fulfillments(fulfillments)
-
         # Créer un embed pour l'acquittement
         embed = discord.Embed(
             title="✅ Tournée Acquittée !",
@@ -123,6 +99,12 @@ class FulfillModal(discord.ui.Modal, title="Ajouter un commentaire"):
         embed.add_field(
             name=f"{ICONS[self.item]} Item",
             value=f"{self.item} ×{self.amount}",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="✅ Payé par",
+            value=f"<@{interaction.user.id}>",
             inline=True
         )
         
@@ -177,7 +159,7 @@ class FulfillView(discord.ui.View):
         self.item_select.callback = self.on_item_select
         self.add_item(self.item_select)
 
-        # -------- SELECT AMOUNT --------
+        # -------- SELECT AMOUNT (désactivé au départ) --------
         self.amount_select = discord.ui.Select(
             placeholder="Choisir la quantité",
             options=[
@@ -185,6 +167,7 @@ class FulfillView(discord.ui.View):
                 for i in range(1, 6)
             ],
             row=1,
+            disabled=True,  # Désactivé jusqu'à ce qu'un item soit sélectionné
         )
         self.amount_select.callback = self.on_amount_select
         self.add_item(self.amount_select)
@@ -205,6 +188,7 @@ class FulfillView(discord.ui.View):
                 for i in range(1, min(max_amount + 1, 6))
             ],
             row=1,
+            disabled=False,  # Activer le select de quantité
         )
         self.amount_select.callback = self.on_amount_select
         self.add_item(self.amount_select)
