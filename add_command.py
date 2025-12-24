@@ -14,7 +14,7 @@ LEDGER_FILE = "ledger.json"
 PENDING_FILE = "pending.json"
 REQUIRED_VOTES = 1  # Modulable ici
 MAX_FIELDS_PER_PAGE = 24  # Limite Discord
-PROPOSAL_TIMEOUT = 3600  # 5 minutes en secondes pour test (normalement 36000 pour 10h)
+PROPOSAL_TIMEOUT = 36000  # 5 minutes en secondes pour test (normalement 36000 pour 10h)
 
 def load_ledger():
     if not os.path.exists(LEDGER_FILE):
@@ -490,7 +490,7 @@ class AddCommand(commands.Cog):
                 time_str = f"{hours_left}h\u00A0{minutes_left}min" if hours_left > 0 else f"{minutes_left}min"
                 
                 field_name = f"{emoji} {entry['item']} ×{entry['amount']} pour {user.display_name}"
-                field_value = f"**Votes :** {votes_count}/{REQUIRED_VOTES} \u2009• \u2009⏰ {time_str}\n**Par :** {added_by.mention}"
+                field_value = f"**Votes :** {votes_count}/{REQUIRED_VOTES} \u2009• \u2009Mis à jour très mineur des embeds⏰ {time_str}\n**Par :** {added_by.mention}"
                 
                 if entry["reason"]:
                     field_value += f"\n**Raison :** *{entry['reason']}*"
