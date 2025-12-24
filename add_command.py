@@ -14,7 +14,7 @@ LEDGER_FILE = "ledger.json"
 PENDING_FILE = "pending.json"
 REQUIRED_VOTES = 1  # Modulable ici
 MAX_FIELDS_PER_PAGE = 24  # Limite Discord
-PROPOSAL_TIMEOUT = 300  # 5 minutes en secondes pour test (normalement 36000 pour 10h)
+PROPOSAL_TIMEOUT = 3600  # 5 minutes en secondes pour test (normalement 36000 pour 10h)
 
 def load_ledger():
     if not os.path.exists(LEDGER_FILE):
@@ -154,7 +154,7 @@ class ReasonModal(discord.ui.Modal, title="Ajouter une raison"):
         total_minutes = math.ceil(PROPOSAL_TIMEOUT / 60)
         hours_left = total_minutes // 60
         minutes_left = total_minutes % 60
-        time_str = f"{hours_left}h{minutes_left}min" if hours_left > 0 else f"{minutes_left}min"
+        time_str = f"{hours_left}h\u00A0{minutes_left}min" if hours_left > 0 else f"{minutes_left}min"
         
         embed.add_field(
             name="━━━━━━━━━━━━━",
@@ -324,7 +324,7 @@ class AddCommand(commands.Cog):
             total_minutes = math.ceil(remaining.total_seconds() / 60)
             hours_left = total_minutes // 60
             minutes_left = total_minutes % 60
-            time_str = f"{hours_left}h{minutes_left}min" if hours_left > 0 else f"{minutes_left}min"
+            time_str = f"{hours_left}h\u00A0{minutes_left}min" if hours_left > 0 else f"{minutes_left}min"
 
             try:
                 channel = self.bot.get_channel(entry["channel_id"])
@@ -431,7 +431,7 @@ class AddCommand(commands.Cog):
             total_minutes = math.ceil(time_left.total_seconds() / 60)
             hours_left = total_minutes // 60
             minutes_left = total_minutes % 60
-            time_str = f"{hours_left}h{minutes_left}min" if hours_left > 0 else f"{minutes_left}min"
+            time_str = f"{hours_left}h\u00A0{minutes_left}min" if hours_left > 0 else f"{minutes_left}min"
             
             # Mettre à jour le compte de votes
             embed = message.embeds[0]
@@ -487,10 +487,10 @@ class AddCommand(commands.Cog):
                 total_minutes = math.ceil(time_left.total_seconds() / 60)
                 hours_left = total_minutes // 60
                 minutes_left = total_minutes % 60
-                time_str = f"{hours_left}h{minutes_left}min" if hours_left > 0 else f"{minutes_left}min"
+                time_str = f"{hours_left}h\u00A0{minutes_left}min" if hours_left > 0 else f"{minutes_left}min"
                 
                 field_name = f"{emoji} {entry['item']} ×{entry['amount']} pour {user.display_name}"
-                field_value = f"**Votes :** {votes_count}/{REQUIRED_VOTES}      •      ⏰ {time_str}\n**Par :** {added_by.mention}"
+                field_value = f"**Votes :** {votes_count}/{REQUIRED_VOTES} \u2009• \u2009⏰ {time_str}\n**Par :** {added_by.mention}"
                 
                 if entry["reason"]:
                     field_value += f"\n**Raison :** *{entry['reason']}*"
