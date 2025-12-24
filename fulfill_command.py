@@ -159,7 +159,7 @@ class FulfillView(discord.ui.View):
         self.item_select.callback = self.on_item_select
         self.add_item(self.item_select)
 
-        # -------- SELECT AMOUNT --------
+        # -------- SELECT AMOUNT (désactivé au départ) --------
         self.amount_select = discord.ui.Select(
             placeholder="Choisir la quantité",
             options=[
@@ -167,6 +167,7 @@ class FulfillView(discord.ui.View):
                 for i in range(1, 6)
             ],
             row=1,
+            disabled=True,  # Désactivé jusqu'à ce qu'un item soit sélectionné
         )
         self.amount_select.callback = self.on_amount_select
         self.add_item(self.amount_select)
@@ -187,6 +188,7 @@ class FulfillView(discord.ui.View):
                 for i in range(1, min(max_amount + 1, 6))
             ],
             row=1,
+            disabled=False,  # Activer le select de quantité
         )
         self.amount_select.callback = self.on_amount_select
         self.add_item(self.amount_select)
